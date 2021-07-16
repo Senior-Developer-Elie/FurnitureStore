@@ -11,9 +11,9 @@ return [
         'connection' => [
             'default' => [
                 'host' => 'localhost',
-                'dbname' => 'm2_quickstart',
-                'username' => 'root',
-                'password' => '',
+                'dbname' => 'kempsey1_furniturestore',
+                'username' => 'kempsey1_user',
+                'password' => 'kempseypassword',
                 'active' => '1'
             ]
         ]
