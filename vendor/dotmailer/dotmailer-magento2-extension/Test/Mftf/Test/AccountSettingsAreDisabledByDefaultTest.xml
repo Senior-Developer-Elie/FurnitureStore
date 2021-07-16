@@ -7,17 +7,16 @@
             <stories value="Configure account settings"/>
             <title value="Confirm that API settings are disabled by default"/>
             <description value="Account settings in the dotdigital > Settings tab should be disabled by default."/>
-            <severity value="MAJOR"/>
-            <group value="AM/106077-mftf"/>
+            <severity value="MINOR"/>
             <group value="dotmailer"/>
         </annotations>
 
         <before>
-            <actionGroup ref="LoginAsAdmin" stepKey="loginAsAdmin1"/>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="AdminLoginActionGroup1"/>
         </before>
 
         <after>
-            <actionGroup ref="logout" stepKey="logout"/>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
         </after>
 
         <amOnPage url="{{AdminDotmailerAccountsPage.url}}" stepKey="amOnDotdigitalAccountsPage"/>

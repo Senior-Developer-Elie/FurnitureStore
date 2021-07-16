@@ -3,9 +3,9 @@
 namespace Dotdigitalgroup\Email\Model\Apiconnector;
 
 use Magento\Framework\Model\AbstractModel;
-use Magento\Framework\Stdlib\DateTime\TimezoneInterfaceFactory;
-use Dotdigitalgroup\Email\Model\DateIntervalFactory;
 use Dotdigitalgroup\Email\Logger\Logger;
+use Magento\Store\Model\App\Emulation;
+use Dotdigitalgroup\Email\Model\Customer\DataField\Date;
 
 /**
  * Manages the Customer data as datafields for contact.
@@ -68,19 +68,14 @@ class Customer extends ContactData
     public $contactFactory;
 
     /**
-     * @var array
-     */
-    public $subscriberStatus = [
-        \Magento\Newsletter\Model\Subscriber::STATUS_SUBSCRIBED => 'Subscribed',
-        \Magento\Newsletter\Model\Subscriber::STATUS_NOT_ACTIVE => 'Not Active',
-        \Magento\Newsletter\Model\Subscriber::STATUS_UNSUBSCRIBED => 'Unsubscribed',
-        \Magento\Newsletter\Model\Subscriber::STATUS_UNCONFIRMED => 'Unconfirmed',
-    ];
-
-    /**
      * @var \Magento\Customer\Model\ResourceModel\Group
      */
     private $groupResource;
+
+    /**
+     * @var Emulation
+     */
+    private $appEmulation;
 
     /**
      * Customer constructor.
@@ -99,9 +94,10 @@ class Customer extends ContactData
      * @param \Magento\Sales\Model\ResourceModel\Order $resourceOrder
      * @param \Magento\Eav\Model\ConfigFactory $eavConfigFactory
      * @param \Dotdigitalgroup\Email\Helper\Config $configHelper
-     * @param TimezoneInterfaceFactory $localeDateFactory
-     * @param DateIntervalFactory $dateIntervalFactory
      * @param Logger $logger
+     * @param \Magento\Eav\Model\Config $eavConfig
+     * @param Date $dateField
+     * @param Emulation $appEmulation
      */
     public function __construct(
         \Magento\Catalog\Model\ResourceModel\Product $productResource,
@@ -118,15 +114,18 @@ class Customer extends ContactData
         \Magento\Sales\Model\ResourceModel\Order $resourceOrder,
         \Magento\Eav\Model\ConfigFactory $eavConfigFactory,
         \Dotdigitalgroup\Email\Helper\Config $configHelper,
-        TimezoneInterfaceFactory $localeDateFactory,
-        DateIntervalFactory $dateIntervalFactory,
-        Logger $logger
+        Logger $logger,
+        \Magento\Eav\Model\Config $eavConfig,
+        Date $dateField,
+        Emulation $appEmulation
     ) {
         $this->reviewCollection  = $reviewCollectionFactory;
         $this->orderCollection   = $collectionFactory;
         $this->groupFactory      = $groupFactory;
         $this->subscriberFactory = $subscriberFactory;
         $this->groupResource     = $groupResource;
+        $this->appEmulation = $appEmulation;
+        $this->dateField = $dateField;
 
         parent::__construct(
             $storeManager,
@@ -138,9 +137,9 @@ class Customer extends ContactData
             $categoryResource,
             $eavConfigFactory,
             $configHelper,
-            $localeDateFactory,
-            $dateIntervalFactory,
-            $logger
+            $logger,
+            $dateField,
+            $eavConfig
         );
     }
 
@@ -542,18 +541,26 @@ class Customer extends ContactData
     /**
      * Subscriber status for Customer.
      *
-     * @return boolean|string
+     * @return string
      */
     public function getSubscriberStatus()
     {
+        $this->appEmulation->startEnvironmentEmulation($this->model->getStoreId());
+
         $subscriberModel = $this->subscriberFactory->create()
             ->loadByCustomerId($this->model->getId());
 
+        $this->appEmulation->stopEnvironmentEmulation();
+
         if ($subscriberModel->getCustomerId()) {
-            return $this->subscriberStatus[$subscriberModel->getSubscriberStatus()];
+            try {
+                return $this->getSubscriberStatusString($subscriberModel->getSubscriberStatus());
+            } catch (\InvalidArgumentException $e) {
+                return '';
+            }
         }
 
-        return false;
+        return '';
     }
 
     /**

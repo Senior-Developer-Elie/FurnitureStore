@@ -8,8 +8,7 @@
             <stories value="If API disabled, plugin shouldn't redirect to preference page."/>
             <title value="You should not be able to see dotmailer preferences page if api is disabled."/>
             <description value="You should not be able to see dotmailer preferences page if api is disabled."/>
-            <severity value="CRITICAL"/>
-            <group value="dotmailer-preference-page"/>
+            <severity value="AVERAGE"/>
             <group value="dotmailer"/>
         </annotations>
         <before>
@@ -19,10 +18,10 @@
             <actionGroup ref="LoginToStorefrontActionGroup" stepKey="signUpNewUser">
                 <argument name="Customer" value="$$createSimpleUsCustomer$$"/>
             </actionGroup>
-            <actionGroup ref="LoginAsAdmin" stepKey="loginAsAdmin"/>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="AdminLoginActionGroup"/>
         </before>
         <after>
-            <actionGroup ref="logout" stepKey="logoutAsAdmin"/>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logoutAsAdmin"/>
             <deleteData createDataKey="createSimpleUsCustomer" stepKey="deleteCustomer"/>
         </after>
         <actionGroup ref="SetDisableDotmailerAccount" stepKey="setDisableDotmailerAccount"/>

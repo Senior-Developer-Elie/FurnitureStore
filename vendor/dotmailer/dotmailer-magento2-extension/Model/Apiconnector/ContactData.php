@@ -3,15 +3,16 @@
 namespace Dotdigitalgroup\Email\Model\Apiconnector;
 
 use Magento\Framework\Model\AbstractModel;
-use Magento\Framework\Stdlib\DateTime\TimezoneInterfaceFactory;
-use Dotdigitalgroup\Email\Model\DateIntervalFactory;
 use Dotdigitalgroup\Email\Logger\Logger;
+use Dotdigitalgroup\Email\Model\Customer\DataField\Date;
 
 /**
  * Manages data synced as contact.
  */
 class ContactData
 {
+    use CustomAttributesTrait;
+
     /**
      * @var array
      */
@@ -88,19 +89,29 @@ class ContactData
     private $products = [];
 
     /**
-     * @var TimezoneInterfaceFactory
-     */
-    private $localeDateFactory;
-
-    /**
-     * @var DateIntervalFactory
-     */
-    private $dateIntervalFactory;
-
-    /**
      * @var Logger
      */
     private $logger;
+
+    /**
+     * @var \Magento\Eav\Model\Config
+     */
+    private $eavConfig;
+
+    /**
+     * @var Date
+     */
+    protected $dateField;
+
+    /**
+     * @var array
+     */
+    private $subscriberStatuses = [
+        \Magento\Newsletter\Model\Subscriber::STATUS_SUBSCRIBED => 'Subscribed',
+        \Magento\Newsletter\Model\Subscriber::STATUS_NOT_ACTIVE => 'Not Active',
+        \Magento\Newsletter\Model\Subscriber::STATUS_UNSUBSCRIBED => 'Unsubscribed',
+        \Magento\Newsletter\Model\Subscriber::STATUS_UNCONFIRMED => 'Unconfirmed',
+    ];
 
     /**
      * ContactData constructor.
@@ -113,9 +124,9 @@ class ContactData
      * @param \Magento\Catalog\Model\ResourceModel\Category $categoryResource
      * @param \Magento\Eav\Model\ConfigFactory $eavConfigFactory
      * @param \Dotdigitalgroup\Email\Helper\Config $configHelper
-     * @param TimezoneInterfaceFactory $localeDateFactory
-     * @param DateIntervalFactory $dateIntervalFactory
      * @param Logger $logger
+     * @param Date $dateField
+     * @param \Magento\Eav\Model\Config $eavConfig
      */
     public function __construct(
         \Magento\Store\Model\StoreManagerInterface $storeManager,
@@ -127,9 +138,9 @@ class ContactData
         \Magento\Catalog\Model\ResourceModel\Category $categoryResource,
         \Magento\Eav\Model\ConfigFactory $eavConfigFactory,
         \Dotdigitalgroup\Email\Helper\Config $configHelper,
-        TimezoneInterfaceFactory $localeDateFactory,
-        DateIntervalFactory $dateIntervalFactory,
-        Logger $logger
+        Logger $logger,
+        Date $dateField,
+        \Magento\Eav\Model\Config $eavConfig
     ) {
         $this->storeManager = $storeManager;
         $this->orderFactory = $orderFactory;
@@ -140,9 +151,9 @@ class ContactData
         $this->productResource = $productResource;
         $this->categoryResource = $categoryResource;
         $this->eavConfigFactory = $eavConfigFactory;
-        $this->localeDateFactory = $localeDateFactory;
-        $this->dateIntervalFactory = $dateIntervalFactory;
         $this->logger = $logger;
+        $this->dateField = $dateField;
+        $this->eavConfig = $eavConfig;
     }
 
     public function init(AbstractModel $model, array $columns)
@@ -164,6 +175,7 @@ class ContactData
      * Set column data on the customer model
      *
      * @return $this
+     * @throws \Magento\Framework\Exception\LocalizedException
      */
     public function setContactData()
     {
@@ -171,7 +183,10 @@ class ContactData
             switch ($key) {
                 case 'dob':
                     $value = $this->model->getDob()
-                        ? $this->getScopeAdjustedDob($this->model->getStoreId())
+                        ? $this->dateField->getScopeAdjustedDate(
+                            $this->model->getStoreId(),
+                            $this->model->getDob()
+                        )
                         : null;
                     break;
 
@@ -183,7 +198,7 @@ class ContactData
                     $method = 'get' . str_replace(' ', '', ucwords(str_replace('_', ' ', $key)));
                     $value = method_exists($this, $method)
                         ? $this->$method()
-                        : $this->model->$method();
+                        : $this->getValue($key);
             }
 
             $this->contactData[$key] = $value;
@@ -245,6 +260,24 @@ class ContactData
         try {
             $store = $this->storeManager->getStore($this->model->getStoreId());
             return $store->getName();
+        } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
+            $this->logger->debug(
+                'Requested store is not found. Store id: ' . $this->model->getStoreId(),
+                [(string) $e]
+            );
+        }
+
+        return '';
+    }
+
+    /**
+     * @return string
+     */
+    public function getStoreNameAdditional()
+    {
+        try {
+            $storeGroup = $this->storeManager->getGroup($this->model->getGroupId());
+            return $storeGroup->getName();
         } catch (\Magento\Framework\Exception\NoSuchEntityException $e) {
             $this->logger->debug(
                 'Requested store is not found. Store id: ' . $this->model->getStoreId(),
@@ -594,37 +627,51 @@ class ContactData
     }
 
     /**
-     * @param string $storeId
+     * @param $attributeCode
+     * @return string
+     * @throws \Magento\Framework\Exception\LocalizedException
+     */
+    private function getValue($attributeCode)
+    {
+        $attribute = $this->eavConfig->getAttribute('customer', $attributeCode);
+
+        switch ($attribute->getData('frontend_input')) {
+            case 'select':
+                return $this->getDropDownValues($attribute, $attributeCode);
+
+            case 'multiselect':
+                return $this->getMultiSelectValues($attribute, $attributeCode);
+
+            default:
+                //Text, Dates, Multilines, Boolean
+                return $this->model->getData($attributeCode);
+        }
+    }
+
+    /**
+     * Subscriber status for email contact.
+     *
      * @return string
      */
-    private function getScopeAdjustedDob($storeId)
+    public function getSubscriberStatus()
     {
-        $scopedDob = $this->localeDateFactory->create()
-            ->scopeDate(
-                $storeId,
-                strtotime($this->model->getDob()),
-                true
-            );
-
-        $timezoneOffset = $scopedDob->getOffset();
-
-        // For locales east of GMT i.e. +01:00 and up, return the raw date
-        if ($timezoneOffset > 0) {
-            return $this->model->getDob();
+        try {
+            return $this->getSubscriberStatusString($this->model->getSubscriberStatus());
+        } catch (\InvalidArgumentException $e) {
+            return "";
         }
+    }
 
-        // For locales west of GMT i.e. -01:00 and below, adjust DOB by adding the current timezone offset
-        $offset = $this->dateIntervalFactory->create(
-            ['interval_spec' => 'PT' . abs($timezoneOffset) . 'S']
-        );
-
-        return $this->localeDateFactory->create()
-            ->date(
-                strtotime($this->model->getDob()),
-                null,
-                false
-            )
-            ->add($offset)
-            ->format(\Zend_Date::ISO_8601);
+    /**
+     * @param $statusCode
+     * @throws \InvalidArgumentException
+     * @return string
+     */
+    public function getSubscriberStatusString($statusCode)
+    {
+        if (!array_key_exists((int) $statusCode, $this->subscriberStatuses)) {
+            throw new \InvalidArgumentException();
+        }
+        return $this->subscriberStatuses[$statusCode];
     }
 }

@@ -7,17 +7,16 @@
             <stories value="Configure data mapping"/>
             <title value="Confirm that data mapping settings are not set by default"/>
             <description value="Data Mapping settings in the dotdigital > Data Mapping tab should be empty by default."/>
-            <severity value="MAJOR"/>
-            <group value="AM/106077-mftf"/>
+            <severity value="MINOR"/>
             <group value="dotmailer"/>
         </annotations>
 
         <before>
-            <actionGroup ref="LoginAsAdmin" stepKey="loginAsAdmin1"/>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="AdminLoginActionGroup1"/>
         </before>
 
         <after>
-            <actionGroup ref="logout" stepKey="logout"/>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
         </after>
 
         <amOnPage url="{{AdminDotdigitalDataMappingPage.url}}" stepKey="amOnDotdigitalDataMappingPage"/>

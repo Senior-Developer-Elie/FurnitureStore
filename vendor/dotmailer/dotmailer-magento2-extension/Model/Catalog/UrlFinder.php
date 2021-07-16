@@ -2,7 +2,6 @@
 
 namespace Dotdigitalgroup\Email\Model\Catalog;
 
-use Dotdigitalgroup\Email\Helper\Data;
 use Dotdigitalgroup\Email\Model\Product\ParentFinder;
 use Magento\Catalog\Block\Product\ImageBuilder;
 use Magento\Catalog\Model\Product;
@@ -14,21 +13,6 @@ class UrlFinder
      * @var \Magento\Catalog\Api\ProductRepositoryInterface
      */
     private $productRepository;
-
-    /**
-     * @var \Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable
-     */
-    private $configurableType;
-
-    /**
-     * @var \Magento\Bundle\Model\ResourceModel\Selection
-     */
-    private $bundleSelection;
-
-    /**
-     * @var \Magento\GroupedProduct\Model\Product\Type\Grouped;
-     */
-    private $groupedType;
 
     /**
      * @var \Magento\Store\Model\StoreManagerInterface
@@ -46,24 +30,15 @@ class UrlFinder
     private $scopeConfig;
 
     /**
-     * @var \Magento\Catalog\Model\Product\Media\Config
-     */
-    private $mediaConfig;
-
-    /**
      * @var ParentFinder
      */
     private $parentFinder;
 
     /**
      * UrlFinder constructor.
-     * @param \Magento\ConfigurableProduct\Model\ResourceModel\Product\Type\Configurable $configurableType
      * @param \Magento\Catalog\Api\ProductRepositoryInterface $productRepository
-     * @param \Magento\Bundle\Model\ResourceModel\Selection $bundleSelection
-     * @param \Magento\GroupedProduct\Model\Product\Type\Grouped $groupedType
      * @param \Magento\Store\Model\StoreManagerInterface $storeManager
      * @param \Magento\Catalog\Block\Product\ImageBuilderFactory $imageBuilderFactory
-     * @param Product\Media\ConfigFactory $mediaConfigFactory
      * @param ScopeConfigInterface $scopeConfig
      * @param ParentFinder $parentFinder
      */
@@ -71,14 +46,12 @@ class UrlFinder
         \Magento\Catalog\Api\ProductRepositoryInterface $productRepository,
         \Magento\Store\Model\StoreManagerInterface $storeManager,
         \Magento\Catalog\Block\Product\ImageBuilderFactory $imageBuilderFactory,
-        \Magento\Catalog\Model\Product\Media\ConfigFactory $mediaConfigFactory,
         ScopeConfigInterface $scopeConfig,
         ParentFinder $parentFinder
     ) {
         $this->productRepository = $productRepository;
         $this->storeManager = $storeManager;
         $this->imageBuilder = $imageBuilderFactory->create();
-        $this->mediaConfig = $mediaConfigFactory->create();
         $this->scopeConfig = $scopeConfig;
         $this->parentFinder = $parentFinder;
     }
@@ -104,7 +77,10 @@ class UrlFinder
     }
 
     /**
-     * Get a product image URL, or that of it's parent if no image is set
+     * Get a product image URL, or that of its parent if no image is set
+     *
+     * @deprecated
+     * @see \Dotdigitalgroup\Email\Model\Product\ImageFinder
      *
      * @param Product $product
      * @param string $imageId
@@ -114,7 +90,7 @@ class UrlFinder
      */
     public function getProductImageUrl(Product $product, string $imageId)
     {
-        $product = $this->getParentProductForNoImageSelection(
+        $product = $this->parentFinder->getParentProductForNoImageSelection(
             $this->getScopedProduct($product)
         );
 
@@ -125,37 +101,6 @@ class UrlFinder
             ->getData();
 
         return $imageData['image_url'] ?? null;
-    }
-
-    /**
-     * @param Product $product
-     * @return string
-     * @throws \Magento\Framework\Exception\NoSuchEntityException
-     */
-    public function getProductSmallImageUrl(Product $product)
-    {
-        return $this->getPath(
-            $this->mediaConfig->getMediaUrl(
-                $this->getParentProductForNoImageSelection($product)->getSmallImage()
-            )
-        );
-    }
-
-    /**
-     * @param Product $product
-     * @return \Magento\Catalog\Api\Data\ProductInterface|Product|null
-     * @throws \Magento\Framework\Exception\NoSuchEntityException
-     */
-    private function getParentProductForNoImageSelection(Product $product)
-    {
-        if ($product->getTypeId() == \Magento\Catalog\Model\Product\Type::TYPE_SIMPLE
-            && (empty($product->getSmallImage()) || $product->getSmallImage() == 'no_selection')
-            && $parentProduct = $this->parentFinder->getParentProduct($product)
-        ) {
-            return $parentProduct;
-        }
-
-        return $product;
     }
 
     /**
@@ -208,7 +153,9 @@ class UrlFinder
      */
     private function removePub($path)
     {
+        // @codingStandardsIgnoreLine
         $parsed = parse_url($path);
+
         $pathArray = explode('/', $parsed['path']);
 
         foreach ($pathArray as $key => $value) {

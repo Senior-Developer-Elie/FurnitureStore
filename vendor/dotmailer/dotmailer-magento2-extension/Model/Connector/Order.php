@@ -2,6 +2,7 @@
 
 namespace Dotdigitalgroup\Email\Model\Connector;
 
+use Dotdigitalgroup\Email\Logger\Logger;
 use Dotdigitalgroup\Email\Model\Product\AttributeFactory;
 
 /**
@@ -138,6 +139,11 @@ class Order
     private $attributeHandler;
 
     /**
+     * @var Logger
+     */
+    private $logger;
+
+    /**
      * Order constructor.
      *
      * @param \Magento\Catalog\Model\ProductFactory $productFactory
@@ -146,6 +152,7 @@ class Order
      * @param \Magento\Store\Model\StoreManagerInterface $storeManagerInterface
      * @param KeyValidator $validator
      * @param AttributeFactory $attributeHandler
+     * @param Logger $logger
      */
     public function __construct(
         \Magento\Catalog\Model\ProductFactory $productFactory,
@@ -153,7 +160,8 @@ class Order
         \Dotdigitalgroup\Email\Helper\Data $helperData,
         \Magento\Store\Model\StoreManagerInterface $storeManagerInterface,
         KeyValidator $validator,
-        AttributeFactory $attributeHandler
+        AttributeFactory $attributeHandler,
+        Logger $logger
     ) {
         $this->productFactory      = $productFactory;
         $this->customerFactory     = $customerFactory;
@@ -161,6 +169,7 @@ class Order
         $this->storeManager = $storeManagerInterface;
         $this->validator = $validator;
         $this->attributeHandler = $attributeHandler;
+        $this->logger = $logger;
     }
 
     /**
@@ -184,7 +193,7 @@ class Order
             '.',
             ''
         );
-        $this->currency = $orderData->getStoreCurrencyCode();
+        $this->currency = $orderData->getOrderCurrencyCode();
         $payment = $orderData->getPayment();
 
         if ($payment) {
@@ -243,7 +252,15 @@ class Order
         /*
          * Order items.
          */
-        $this->processOrderItems($orderData, $syncCustomOption);
+        try {
+            $this->processOrderItems($orderData, $syncCustomOption);
+        } catch (\InvalidArgumentException $e) {
+            $this->logger->debug(
+                'Could not process order items for order id ' . $orderData->getRealOrderId(),
+                [(string) $e]
+            );
+            $this->products = [];
+        }
 
         $this->orderSubtotal = (float)number_format(
             $orderData->getData('subtotal'),
@@ -263,7 +280,7 @@ class Order
         $this->orderTotal = (float)number_format($orderTotal, 2, '.', '');
         $this->orderStatus = $orderData->getStatus();
 
-        unset($this->storeManager);
+        unset($this->storeManager, $this->logger);
 
         return $this;
     }
@@ -325,7 +342,8 @@ class Order
      * @param \Magento\Sales\Model\Order $orderData
      * @param boolean $syncCustomOption
      *
-     * @return null
+     * @return void
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     private function processOrderItems($orderData, $syncCustomOption)
     {
@@ -333,8 +351,15 @@ class Order
             if ($productItem->getProduct() === null) {
                 continue;
             }
+
+            $isBundle = $isChildOfBundle = false;
+
+            /**
+             * We store data for configurable and bundle products, to be output alongside their children.
+             * Configurable parents are not output in schema,
+             * but bundle parents are.
+             */
             if (in_array($productItem->getProduct()->getTypeId(), ['configurable', 'bundle'])) {
-                // We store data for configurable and bundle products, to be output alongside their children
                 unset($parentProductModel, $parentLineItem);
                 $parentProductModel = $productItem->getProduct();
                 $parentLineItem = $productItem;
@@ -342,7 +367,13 @@ class Order
                 // Custom options stored against parent order items
                 $customOptions = ($syncCustomOption) ? $this->_getOrderItemOptions($productItem) : [];
 
-                continue;
+                // Define parent types for easy reference
+                $isBundle = $productItem->getProduct()->getTypeId() === 'bundle';
+                $isConfigurable = $productItem->getProduct()->getTypeId() === 'configurable';
+
+                if ($isConfigurable) {
+                    continue;
+                }
             }
 
             if (empty($customOptions)) {
@@ -352,6 +383,7 @@ class Order
             if (isset($parentProductModel) &&
                 isset($parentLineItem) &&
                 $parentLineItem->getId() === $productItem->getParentItemId()) {
+                $isChildOfBundle = $parentProductModel->getTypeId() === 'bundle';
                 $productModel = $parentProductModel;
                 $childProductModel = $productItem->getProduct();
             } else {
@@ -362,7 +394,9 @@ class Order
             /**
              * Price
              */
-            if (isset($parentLineItem) && $parentLineItem->getProduct()->getTypeId() === 'configurable') {
+            if (isset($parentLineItem) &&
+                $parentLineItem->getId() === $productItem->getParentItemId() &&
+                $parentLineItem->getProduct()->getTypeId() === 'configurable') {
                 $price = $parentLineItem->getPrice();
             } else {
                 $price = $productItem->getPrice();
@@ -401,8 +435,8 @@ class Order
                  */
                 $productData = [
                     'name' => $productItem->getName(),
-                    'parent_name' => $productModel->getName(),
-                    'sku' => $productItem->getSku(),
+                    'parent_name' => $isBundle ? '' : $productModel->getName(),
+                    'sku' => $isBundle ? $productModel->getSku() : $productItem->getSku(),
                     'qty' => (int)number_format(
                         $productItem->getData('qty_ordered'),
                         2
@@ -425,7 +459,15 @@ class Order
                 if ($customOptions) {
                     $productData['custom-options'] = $customOptions;
                 }
-                $this->products[] = $productData;
+
+                if ($isChildOfBundle) {
+                    end($this->products);
+                    $lastKey = key($this->products);
+                    $this->products[$lastKey]['sub_items'][] = $productData;
+                } else {
+                    $this->products[] = $productData;
+                }
+
             } else {
                 // when no product information is available limit to this data
                 $productData = [
@@ -541,8 +583,11 @@ class Order
                 case 'timestamp':
                 case 'datetime':
                 case 'date':
-                    $date = new \DateTime($orderData->$function());
-                    $value = $date->format(\DateTime::ISO8601);
+                    $value = null;
+                    if ($orderData->$function() !== null) {
+                        $date = new \DateTime($orderData->$function());
+                        $value = $date->format(\DateTime::ISO8601);
+                    }
                     break;
 
                 default:

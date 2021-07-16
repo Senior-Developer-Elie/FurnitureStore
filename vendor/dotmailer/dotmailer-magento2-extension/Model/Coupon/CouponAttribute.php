@@ -2,11 +2,12 @@
 
 namespace Dotdigitalgroup\Email\Model\Coupon;
 
+use DateTime;
 use Dotdigitalgroup\Email\Api\Data\CouponAttributeInterface;
 use Dotdigitalgroup\Email\Model\DateTimeFactory;
 use Magento\Framework\Api\AttributeValueFactory;
 use Magento\Framework\Api\ExtensionAttributesFactory;
-use \Magento\Framework\Model\AbstractExtensibleModel;
+use Magento\Framework\Model\AbstractExtensibleModel;
 
 /**
  * Class CouponAttributeRepository
@@ -93,11 +94,7 @@ class CouponAttribute extends AbstractExtensibleModel implements CouponAttribute
      */
     public function getExpiresAt()
     {
-        if ($expiresAt = $this->getData(self::EXPIRES_AT)) {
-            return $this->dateTimeFactory->create(['time' => $expiresAt])
-                ->getUtcDate();
-        }
-        return null;
+        return $this->getData(self::EXPIRES_AT);
     }
 
     /**
@@ -105,8 +102,20 @@ class CouponAttribute extends AbstractExtensibleModel implements CouponAttribute
      */
     public function setExpiresAt(string $expiresAt)
     {
-        $this->setData(self::EXPIRES_AT, $expiresAt);
-        return $this;
+        return $this->setData(self::EXPIRES_AT, $expiresAt);
+    }
+
+    /**
+     * @return DateTime|null
+     */
+    public function getExpiresAtDate()
+    {
+        $expiresAt = $this->getExpiresAt();
+        if ($expiresAt) {
+            return $this->dateTimeFactory->create(['time' => $expiresAt])
+                ->getUtcDate();
+        }
+        return null;
     }
 
     /**
