@@ -1,0 +1,4 @@
+[16-Jul-2021 09:59:24 UTC] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/kempsey1/public_html/vendor/wikimedia/less.php/lib/Less/Tree/Selector.php on line 103
+[16-Jul-2021 09:59:54 UTC] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/kempsey1/public_html/vendor/wikimedia/less.php/lib/Less/Visitor/processExtends.php on line 440
+[16-Jul-2021 09:59:55 UTC] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/kempsey1/public_html/vendor/wikimedia/less.php/lib/Less/Visitor/processExtends.php on line 440
+[16-Jul-2021 09:59:55 UTC] PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted (tried to allocate 20480 bytes) in /home/kempsey1/public_html/vendor/wikimedia/less.php/lib/Less/Tree/Ruleset.php on line 529
